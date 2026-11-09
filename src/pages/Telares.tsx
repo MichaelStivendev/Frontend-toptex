@@ -36,11 +36,15 @@ const areaPorUsuario: Record<
 > = {
   mythos: { titulo: "Área 1", desde: 1, hasta: FIN_AREA_1 },
   leonardo: { titulo: "Área 2", desde: FIN_AREA_1 + 1, hasta: TOTAL },
+  todas: { titulo: "Todas las Áreas", desde: 1, hasta: TOTAL },
+  admin: { titulo: "Todas las Áreas", desde: 1, hasta: TOTAL },
 };
 
 const colorUsuario: Record<Usuario, string> = {
   mythos: "bg-teal-600",
   leonardo: "bg-amber-500",
+  todas: "bg-stone-900",
+  admin: "bg-stone-900",
 };
 
 const cuadroOperativo =
@@ -55,7 +59,11 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
   const [novedadActiva, setNovedadActiva] = useState<NovedadTurno | null>(null);
   const [novedadesTelares, setNovedadesTelares] = useState<Record<number, NovedadTurno>>({});
 
-  const area = areaPorUsuario[usuario];
+  const area = areaPorUsuario[usuario] ?? {
+    titulo: "Todas las Áreas",
+    desde: 1,
+    hasta: TOTAL,
+  };
 
   // Carga inicial y configuración de WebSocket en tiempo real
   useEffect(() => {
@@ -172,9 +180,12 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
     mostrarAviso(`Novedad del Telar ${n} eliminada`);
   }
 
+  const desde = area?.desde ?? 1;
+  const hasta = area?.hasta ?? TOTAL;
+
   const numeros = Array.from(
-    { length: area.hasta - area.desde + 1 },
-    (_, i) => area.desde + i
+    { length: hasta - desde + 1 },
+    (_, i) => desde + i
   );
 
   const conteo: Record<Categoria, number> = { produccion: 0, falla: 0, apagado: 0 };
@@ -199,12 +210,14 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-3">
             <span
-              className={`flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold text-white ${colorUsuario[usuario]}`}
+              className={`flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold text-white ${colorUsuario[usuario] ?? "bg-stone-900"}`}
             >
-              {usuario === "mythos" ? "M" : "L"}
+              {usuario === "mythos" ? "M" : usuario === "leonardo" ? "L" : "A"}
             </span>
             <div className="leading-tight">
-              <p className="text-sm text-stone-500">Mecánico</p>
+              <p className="text-sm text-stone-500">
+                {usuario === "todas" || usuario === "admin" ? "Administrador" : "Mecánico"}
+              </p>
               <p className="font-semibold text-stone-900">{nombre}</p>
             </div>
           </div>
@@ -239,10 +252,10 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
           <>
             <div className="mb-4">
               <h1 className="text-2xl font-bold tracking-tight text-stone-900">
-                {area.titulo}
+                {area?.titulo ?? "Todas las Áreas"}
               </h1>
               <p className="mt-1 text-stone-500">
-                Telares {area.desde} – {area.hasta}. Selecciona una opción abajo para marcar entrega de turno o toca un telar para una OT.
+                Telares {desde} – {hasta}. Selecciona una opción abajo para marcar entrega de turno o toca un telar para una OT.
               </p>
             </div>
 
@@ -318,7 +331,7 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
             <h1 className="mb-4 text-2xl font-bold tracking-tight text-stone-900">
               Historial de OT
             </h1>
-            <Historial ots={ots} desde={area.desde} hasta={area.hasta} />
+            <Historial ots={ots} desde={desde} hasta={hasta} />
           </>
         )}
       </main>

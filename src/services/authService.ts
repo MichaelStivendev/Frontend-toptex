@@ -1,8 +1,10 @@
 import { API_URL } from "../config";
+import type { Area, RolNombre } from "../types";
 
 export type LoginRespuesta = {
   nombreCompleto: string;
-  area: "mythos" | "leonardo";
+  area: Area;
+  rol?: RolNombre;
 };
 
 export async function loginMecanico(username: string, password: string): Promise<LoginRespuesta> {

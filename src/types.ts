@@ -152,9 +152,10 @@ export function calcularTiempos(ot: OT, ahora = Date.now()) {
   const inicio = new Date(ot.creada).getTime();
   const fin = ot.finalizada ? new Date(ot.finalizada).getTime() : ahora;
   const total = Math.max(0, fin - inicio);
-  const pausado = ot.pausas.reduce((acc, p) => {
+  const pausado = (ot.pausas ?? []).reduce((acc, p) => {
+    if (!p) return acc;
     const desde = new Date(p.desde).getTime();
-    const hasta = p.hasta ? new Date(p.hasta).getTime() : fin;
+    const hasta = p?.hasta ? new Date(p.hasta).getTime() : fin;
     return acc + Math.max(0, hasta - desde);
   }, 0);
   return { total, pausado, trabajado: Math.max(0, total - pausado) };

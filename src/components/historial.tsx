@@ -214,7 +214,7 @@ export default function Historial({ ots, desde, hasta }: Props) {
                     <span>
                       <strong className="text-stone-700">Tiempo total:</strong> {formatoDuracion(t.total)}
                     </span>
-                    {o.pausas.length > 0 && (
+                    {(o.pausas?.length ?? 0) > 0 && (
                       <div className="flex gap-3">
                         <span>
                           <strong className="text-yellow-700">Pausado:</strong> {formatoDuracion(t.pausado)}
@@ -227,7 +227,7 @@ export default function Historial({ ots, desde, hasta }: Props) {
                   </div>
 
                   {/* Historial de Pausas */}
-                  {o.pausas.length > 0 && (
+                  {(o.pausas?.length ?? 0) > 0 && (
                     <div className="space-y-1.5 pt-1">
                       <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">
                         Historial de pausas
@@ -238,8 +238,8 @@ export default function Historial({ ots, desde, hasta }: Props) {
                             {MOTIVOS_PAUSA[p.motivo]}
                           </span>
                           <span className="text-stone-600 block sm:inline sm:ml-2">
-                            Pausó {p.pausadaPor} ({formatoFecha(p.desde)})
-                            {p.hasta && ` · Reanudó ${p.reanudadaPor} (${formatoFecha(p.hasta)})`}
+                            Pausó {p?.pausadaPor} ({formatoFecha(p?.desde)})
+                            {p?.hasta && ` · Reanudó ${p?.reanudadaPor} (${formatoFecha(p.hasta)})`}
                           </span>
                         </div>
                       ))}

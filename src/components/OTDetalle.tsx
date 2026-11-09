@@ -190,7 +190,7 @@ export default function OTDetalle({
                       <p className="text-stone-600">
                         Pausó {p.pausadaPor} · {formatoFecha(p.desde)}
                       </p>
-                      {p.hasta ? (
+                      {p?.hasta ? (
                         <p className="text-stone-600">
                           Reanudó {p.reanudadaPor} · {formatoFecha(p.hasta)}
                         </p>
