@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import {
   CATEGORIAS,
-  MOTIVOS,
-  MOTIVOS_PAUSA,
   calcularTiempos,
   formatoDuracion,
   formatoFecha,
+  obtenerInfoMotivo,
+  obtenerTextoMotivoPausa,
 } from "../types";
-import type { Categoria, Motivo, OT } from "../types";
+import type { Categoria, OT } from "../types";
 
 type Props = {
   ots: OT[];
@@ -23,27 +23,23 @@ const estados = {
 
 export default function Historial({ ots, desde, hasta }: Props) {
   const [filtro, setFiltro] = useState<"todas" | Categoria>("todas");
+  const [busquedaTelar, setBusquedaTelar] = useState("");
 
   const lista = useMemo(
     () =>
-      ots
-        .filter((o) => o.telar >= desde && o.telar <= hasta)
-        .filter((o) => filtro === "todas" || MOTIVOS[o.motivo].categoria === filtro)
-        .sort((a, b) => b.creada.localeCompare(a.creada)),
+      (Array.isArray(ots) ? ots : [])
+        .filter((o) => o && o.telar >= desde && o.telar <= hasta)
+        .filter((o) => filtro === "todas" || obtenerInfoMotivo(o.motivo).categoria === filtro)
+        .sort((a, b) => String(b.creada ?? "").localeCompare(String(a.creada ?? ""))),
     [ots, desde, hasta, filtro]
   );
 
-  // Resumen por motivo: cuántas veces y cuánto tiempo
-  const resumen = useMemo(() => {
-    const mapa = new Map<Motivo, { n: number; ms: number }>();
-    lista.forEach((o) => {
-      const actual = mapa.get(o.motivo) ?? { n: 0, ms: 0 };
-      actual.n += 1;
-      actual.ms += calcularTiempos(o).total;
-      mapa.set(o.motivo, actual);
-    });
-    return [...mapa.entries()].sort((a, b) => b[1].n - a[1].n);
-  }, [lista]);
+  // Variable derivada que filtra en tiempo real por número de telar (convertido a String)
+  const listaFiltrada = useMemo(() => {
+    const termino = busquedaTelar.trim();
+    if (!termino) return lista;
+    return lista.filter((o) => String(o.telar).includes(termino));
+  }, [lista, busquedaTelar]);
 
   const filtros: { id: "todas" | Categoria; nombre: string }[] = [
     { id: "todas", nombre: "Todas" },
@@ -73,41 +69,45 @@ export default function Historial({ ots, desde, hasta }: Props) {
         ))}
       </div>
 
-      {/* Resumen Métrico Superior */}
-      {resumen.length > 0 && (
-        <div className="flex flex-wrap gap-2 pt-1">
-          {resumen.map(([motivo, r]) => (
-            <div
-              key={motivo}
-              className="flex items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-sm border border-stone-200/80 shadow-sm"
+      {/* Buscador por número de telar (UX para planta: teclado numérico, p-4, texto grande y botón X) */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <input
+            type="number"
+            inputMode="numeric"
+            value={busquedaTelar}
+            onChange={(e) => setBusquedaTelar(e.target.value)}
+            placeholder="Buscar por número de telar (ej: 145)..."
+            aria-label="Buscar por número de telar"
+            className="w-full rounded-2xl border border-stone-300 bg-white p-4 pr-14 text-lg font-semibold text-stone-900 placeholder:font-normal placeholder:text-stone-400 shadow-sm outline-none transition focus:border-stone-900 focus:ring-4 focus:ring-stone-900/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          {busquedaTelar && (
+            <button
+              type="button"
+              onClick={() => setBusquedaTelar("")}
+              aria-label="Limpiar búsqueda"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-xl bg-stone-200 text-lg font-bold text-stone-700 transition hover:bg-stone-300 active:scale-95"
             >
-              <span
-                className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                  CATEGORIAS[MOTIVOS[motivo].categoria].punto
-                }`}
-              />
-              <span className="font-semibold text-stone-900">
-                {MOTIVOS[motivo].nombre}
-              </span>
-              <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-xs font-medium text-stone-600">
-                {r.n} ({formatoDuracion(r.ms)})
-              </span>
-            </div>
-          ))}
+              ✕
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Lista de Órdenes de Trabajo */}
-      {lista.length === 0 ? (
+      {listaFiltrada.length === 0 ? (
         <p className="rounded-2xl border border-stone-200 bg-white p-8 text-center text-stone-500">
-          Todavía no hay OT registradas en este rango.
+          {busquedaTelar.trim()
+            ? `No hay resultados para el telar "${busquedaTelar}".`
+            : "No hay resultados en este rango."}
         </p>
       ) : (
         <div className="space-y-2.5">
-          {lista.map((o) => {
-            const cat = CATEGORIAS[MOTIVOS[o.motivo].categoria];
+          {listaFiltrada.map((o) => {
+            const infoMotivo = obtenerInfoMotivo(o.motivo);
+            const cat = CATEGORIAS[infoMotivo.categoria];
             const t = calcularTiempos(o);
-            const est = estados[o.estado];
+            const est = estados[o.estado] ?? estados.abierta;
             const personalRealizador = o.personalAsignado || o.finalizadaPor;
 
             return (
@@ -125,7 +125,7 @@ export default function Historial({ ots, desde, hasta }: Props) {
                       </p>
                       <span className="text-stone-300">·</span>
                       <p className="font-semibold text-stone-800 truncate">
-                        {MOTIVOS[o.motivo].nombre}
+                        {infoMotivo.nombre}
                       </p>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-stone-500">
@@ -232,10 +232,10 @@ export default function Historial({ ots, desde, hasta }: Props) {
                       <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">
                         Historial de pausas
                       </p>
-                      {o.pausas.map((p, i) => (
+                      {(o.pausas ?? []).map((p, i) => (
                         <div key={i} className="rounded-lg bg-amber-50/80 px-3 py-2 text-xs text-amber-900 border border-amber-200/50">
                           <span className="font-bold">
-                            {MOTIVOS_PAUSA[p.motivo]}
+                            {obtenerTextoMotivoPausa(p?.motivo)}
                           </span>
                           <span className="text-stone-600 block sm:inline sm:ml-2">
                             Pausó {p?.pausadaPor} ({formatoFecha(p?.desde)})

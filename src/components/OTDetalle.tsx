@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
+import SelectorOperarios from "./SelectorOperarios";
 import {
   CATEGORIAS,
-  MOTIVOS,
   MOTIVOS_PAUSA,
   calcularTiempos,
   formatoDuracion,
   formatoFecha,
+  obtenerInfoMotivo,
+  obtenerTextoMotivoPausa,
 } from "../types";
 import type { MotivoPausa, OT, Repuesto } from "../types";
 
@@ -14,7 +16,7 @@ type Props = {
   mecanico: string; // quien tiene la sesión (pausa / reanuda / finaliza)
   onCerrar: () => void;
   onPausar: (motivo: MotivoPausa) => void;
-  onReanudar: () => void;
+  onReanudar: () => Promise<void> | void;
   // Actualizamos el tipo para incluir el personal
   onFinalizar: (datos: {
     trabajoRealizado: string;
@@ -54,6 +56,8 @@ export default function OTDetalle({
   const [repuestos, setRepuestos] = useState<Repuesto[]>([]);
   const [repNombre, setRepNombre] = useState("");
   const [repCantidad, setRepCantidad] = useState("1");
+  const [reanudando, setReanudando] = useState(false);
+  const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCerrar();
@@ -65,10 +69,12 @@ export default function OTDetalle({
     };
   }, [onCerrar]);
 
-  const cat = CATEGORIAS[MOTIVOS[ot.motivo].categoria];
+  const infoMotivo = obtenerInfoMotivo(ot.motivo);
+  const cat = CATEGORIAS[infoMotivo.categoria];
   const tiempos = calcularTiempos(ot, ahora);
   const pausada = ot.estado === "pausada";
-  const pausaActual = pausada ? ot.pausas[ot.pausas.length - 1] : undefined;
+  const listaPausas = Array.isArray(ot.pausas) ? ot.pausas : [];
+  const pausaActual = pausada && listaPausas.length > 0 ? listaPausas[listaPausas.length - 1] : undefined;
 
   function ajustarCantidad(delta: number) {
     const actual = Math.max(1, Number(repCantidad) || 1);
@@ -127,11 +133,17 @@ export default function OTDetalle({
         {/* ---------- DETALLE ---------- */}
         {modo === "detalle" && (
           <>
+            {mensajeExito && (
+              <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                {mensajeExito}
+              </div>
+            )}
+
             <dl className="space-y-3 rounded-2xl bg-stone-50 p-4 text-sm">
               <div className="flex justify-between gap-4">
                 <dt className="text-stone-500">Motivo</dt>
                 <dd className="text-right font-semibold text-stone-900">
-                  {MOTIVOS[ot.motivo].nombre}
+                  {infoMotivo.nombre}
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
@@ -152,7 +164,7 @@ export default function OTDetalle({
                   {formatoDuracion(tiempos.total)}
                 </dd>
               </div>
-              {ot.pausas.length > 0 && (
+              {listaPausas.length > 0 && (
                 <>
                   <div className="flex justify-between gap-4">
                     <dt className="text-stone-500">En pausa</dt>
@@ -178,17 +190,17 @@ export default function OTDetalle({
               )}
             </dl>
 
-            {ot.pausas.length > 0 && (
+            {listaPausas.length > 0 && (
               <div className="mt-4">
                 <p className="mb-2 text-sm font-medium text-stone-700">Pausas</p>
                 <ul className="space-y-2 text-sm">
-                  {ot.pausas.map((p, i) => (
+                  {listaPausas.map((p, i) => (
                     <li key={i} className="rounded-xl bg-yellow-50 px-3 py-2.5">
                       <p className="font-semibold text-yellow-900">
-                        {MOTIVOS_PAUSA[p.motivo]}
+                        {obtenerTextoMotivoPausa(p?.motivo)}
                       </p>
                       <p className="text-stone-600">
-                        Pausó {p.pausadaPor} · {formatoFecha(p.desde)}
+                        Pausó {p?.pausadaPor} · {formatoFecha(p?.desde)}
                       </p>
                       {p?.hasta ? (
                         <p className="text-stone-600">
@@ -206,17 +218,28 @@ export default function OTDetalle({
             {pausaActual && (
               <p className="mt-4 text-center text-xs text-stone-500">
                 Pausada por {pausaActual.pausadaPor}:{" "}
-                {MOTIVOS_PAUSA[pausaActual.motivo].toLowerCase()}
+                {obtenerTextoMotivoPausa(pausaActual.motivo).toLowerCase()}
               </p>
             )}
 
             <div className={barraAcciones}>
               {pausada ? (
                 <button
-                  onClick={onReanudar}
-                  className={`${btnBase} bg-stone-900 text-white hover:bg-stone-700 active:bg-stone-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-900/30`}
+                  type="button"
+                  disabled={reanudando}
+                  onClick={async () => {
+                    setReanudando(true);
+                    try {
+                      await onReanudar();
+                      setMensajeExito("¡Revisión reanudada con éxito! Ya puedes continuar con la OT.");
+                      setTimeout(() => setMensajeExito(null), 4000);
+                    } finally {
+                      setReanudando(false);
+                    }
+                  }}
+                  className="min-h-16 w-full rounded-2xl bg-blue-600 px-6 py-4 text-lg font-extrabold text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-600/30 disabled:cursor-not-allowed disabled:bg-blue-300"
                 >
-                  Reanudar como {mecanico}
+                  {reanudando ? "Reanudando..." : "Reanudar Revisión"}
                 </button>
               ) : (
                 <>
@@ -300,24 +323,13 @@ export default function OTDetalle({
                 />
               </div>
 
-              {/* Personal Asignado / Participantes */}
-              <div>
-                <label
-                  htmlFor="personal-asignado"
-                  className="mb-2 block text-sm font-medium text-stone-700"
-                >
-                  Personal que intervino (Ej: Mecánico y Producción)
-                </label>
-                <input
-                  id="personal-asignado"
-                  type="text"
-                  value={personalAsignado}
-                  onChange={(e) => setPersonalAsignado(e.target.value)}
-                  placeholder="Ej: Josué y Miriam (Picando peine)"
-                  autoComplete="off"
-                  className={campo}
-                />
-              </div>
+              {/* Selección múltiple de operarios (reemplaza el input de texto libre) */}
+              <SelectorOperarios
+                value={personalAsignado}
+                onChange={setPersonalAsignado}
+                operarioSesion={mecanico}
+                label="Trabajo realizado por (Personal que intervino)"
+              />
 
               {/* ---- Repuestos ---- */}
               <div>

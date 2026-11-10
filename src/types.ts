@@ -1,8 +1,6 @@
-
-
 export type Categoria = "produccion" | "falla" | "apagado";
 
-// src/types/index.ts
+// src/types.ts
 
 export type Area = "mythos" | "leonardo" | "todas";
 
@@ -30,7 +28,12 @@ export type Motivo =
   | "mecanico"
   | "otra_falla"
   | "apagado"
-  | "fuera_servicio";
+  | "fuera_servicio"
+  | "Para muestra"
+  | "Fallo eléctrico"
+  | "Fallo de trama"
+  | "Falto de urdido"
+  | "Otro";
 
 export type MotivoPausa = "cambio_turno" | "otra_maquina" | "falta_repuesto";
 
@@ -80,7 +83,7 @@ export const CATEGORIAS: Record<
 };
 
 export const MOTIVOS: Record<
-  Motivo,
+  string,
   { nombre: string; corto: string; categoria: Categoria }
 > = {
   urdimbre: { nombre: "Urdimbre", corto: "Urd.", categoria: "produccion" },
@@ -105,11 +108,53 @@ export const MOTIVOS: Record<
     corto: "Fuera",
     categoria: "apagado",
   },
+  // Motivos provenientes de "Entregar Turno"
+  "Para muestra": { nombre: "Para muestra", corto: "Muestra", categoria: "produccion" },
+  "Fallo eléctrico": { nombre: "Fallo eléctrico", corto: "Eléct.", categoria: "falla" },
+  "Fallo de trama": { nombre: "Fallo de trama", corto: "Trama", categoria: "produccion" },
+  "Falto de urdido": { nombre: "Falto de urdido", corto: "Urdido", categoria: "produccion" },
+  Otro: { nombre: "Otro", corto: "Otro", categoria: "falla" },
 };
 
+const MOTIVOS_MODAL_BASE: Motivo[] = [
+  "urdimbre",
+  "trama",
+  "cambio_referencia",
+  "repasando",
+  "falta_programacion",
+  "electrico",
+  "mecanico",
+  "otra_falla",
+  "apagado",
+  "fuera_servicio",
+];
+
+/**
+ * Devuelve siempre un objeto válido para cualquier motivo (incluso si viene un texto nuevo desde el backend),
+ * evitando errores de lectura sobre undefined en Telares, Historial y OTDetalle.
+ */
+export function obtenerInfoMotivo(motivo?: string | null): {
+  nombre: string;
+  corto: string;
+  categoria: Categoria;
+} {
+  if (!motivo) {
+    return { nombre: "Sin motivo", corto: "OT", categoria: "falla" };
+  }
+  if (MOTIVOS[motivo]) {
+    return MOTIVOS[motivo];
+  }
+  const limpio = String(motivo);
+  return {
+    nombre: limpio,
+    corto: limpio.slice(0, 6),
+    categoria: "falla",
+  };
+}
+
 export function motivosDe(categoria: Categoria): Motivo[] {
-  return (Object.keys(MOTIVOS) as Motivo[]).filter(
-    (m) => MOTIVOS[m].categoria === categoria
+  return MOTIVOS_MODAL_BASE.filter(
+    (m) => obtenerInfoMotivo(m).categoria === categoria
   );
 }
 
@@ -118,6 +163,11 @@ export const MOTIVOS_PAUSA: Record<MotivoPausa, string> = {
   otra_maquina: "Atender otra máquina",
   falta_repuesto: "Falta de repuesto",
 };
+
+export function obtenerTextoMotivoPausa(motivo?: string | null): string {
+  if (!motivo) return "En pausa";
+  return (MOTIVOS_PAUSA as Record<string, string>)[motivo] ?? String(motivo);
+}
 
 export type Pausa = {
   motivo: MotivoPausa;
@@ -169,7 +219,8 @@ export function formatoDuracion(ms: number): string {
   return h > 0 ? `${h} h ${m} min` : `${m} min`;
 }
 
-export function formatoFecha(iso: string): string {
+export function formatoFecha(iso?: string): string {
+  if (!iso) return "";
   return new Date(iso).toLocaleString("es-CO", {
     day: "2-digit",
     month: "short",

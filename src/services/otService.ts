@@ -1,5 +1,6 @@
-import { API_URL } from "../config";
 import type { Motivo, MotivoPausa, OT, Repuesto, Usuario } from "../types";
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 export async function listarOTs(): Promise<OT[]> {
   try {
@@ -20,13 +21,17 @@ export async function crearOT(datos: {
   observacion: string;
   mecanico: string;
   usuario: Usuario;
+  personalAsignado?: string;
 }): Promise<OT> {
   const response = await fetch(`${API_URL}/api/ots`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(datos),
+    body: JSON.stringify({
+      ...datos,
+      trabajo_realizado_por: datos.personalAsignado || datos.mecanico,
+    }),
   });
 
   if (!response.ok) {
@@ -58,14 +63,23 @@ export async function pausarOT(
 
 export async function reanudarOT(id: string, por: string): Promise<OT | null> {
   try {
-    const response = await fetch(`${API_URL}/api/ots/${id}/reanudar`, {
-      method: "PATCH",
+    let response = await fetch(`${API_URL}/api/ots/${id}/reanudar`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ por }),
+      body: JSON.stringify({ por, mecanico: por, reportado_por: por }),
     });
 
+    if (response.status === 405) {
+      response = await fetch(`${API_URL}/api/ots/${id}/reanudar`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ por, mecanico: por, reportado_por: por }),
+      });
+    }
+
     if (!response.ok) return null;
-    return await response.json();
+    const data = await response.json().catch(() => null);
+    return data;
   } catch (error) {
     console.error("Error en reanudarOT:", error);
     return null;

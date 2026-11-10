@@ -1,5 +1,6 @@
-import { API_URL } from "../config";
 import type { Area, RolNombre } from "../types";
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 export type LoginRespuesta = {
   nombreCompleto: string;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import SelectorOperarios from "./SelectorOperarios";
 import { CATEGORIAS, MOTIVOS, motivosDe } from "../types";
 import type { Categoria, Motivo } from "../types";
 
@@ -6,13 +7,18 @@ type Props = {
   telar: number;
   mecanico: string;
   onCerrar: () => void;
-  onGenerar: (datos: { motivo: Motivo; observacion: string }) => void;
+  onGenerar: (datos: {
+    motivo: Motivo;
+    observacion: string;
+    personalAsignado: string;
+  }) => void;
 };
 
 export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props) {
   const [categoria, setCategoria] = useState<Categoria>("produccion");
   const [motivo, setMotivo] = useState<Motivo | null>(null);
   const [observacion, setObservacion] = useState("");
+  const [personalAsignado, setPersonalAsignado] = useState(mecanico);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCerrar();
@@ -53,7 +59,13 @@ export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props)
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (motivo) onGenerar({ motivo, observacion: observacion.trim() });
+            if (motivo) {
+              onGenerar({
+                motivo,
+                observacion: observacion.trim(),
+                personalAsignado: personalAsignado.trim(),
+              });
+            }
           }}
           className="space-y-5"
         >
@@ -110,6 +122,14 @@ export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props)
               ))}
             </div>
           </fieldset>
+
+          {/* Selección múltiple de operarios */}
+          <SelectorOperarios
+            value={personalAsignado}
+            onChange={setPersonalAsignado}
+            operarioSesion={mecanico}
+            label="Trabajo realizado por"
+          />
 
           <div>
             <label
