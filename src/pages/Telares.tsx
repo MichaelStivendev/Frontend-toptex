@@ -59,11 +59,80 @@ const cuadroOperativo =
   "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700";
 
 const MOTIVOS_ENTREGA = [
-  { valor: "Para muestra", corto: "Muestra", color: "bg-purple-600 border-purple-900 text-white" },
-  { valor: "Fallo eléctrico", corto: "Eléct.", color: "bg-rose-600 border-rose-900 text-white" },
-  { valor: "Fallo de trama", corto: "Trama", color: "bg-orange-500 border-orange-800 text-white" },
-  { valor: "Falto de urdido", corto: "Urdido", color: "bg-amber-600 border-amber-900 text-white" },
-  { valor: "Otro", corto: "Otro", color: "bg-indigo-600 border-indigo-900 text-white" },
+  // Producción
+  {
+    valor: "Sin urdido",
+    corto: "S. Urd.",
+    grupo: "Producción",
+    color: "bg-teal-600 border-teal-900 text-white",
+  },
+  {
+    valor: "Picando peine",
+    corto: "P. Peine",
+    grupo: "Producción",
+    color: "bg-orange-500 border-orange-800 text-white",
+  },
+  {
+    valor: "Repasando",
+    corto: "Rep.",
+    grupo: "Producción",
+    color: "bg-amber-500 border-amber-800 text-stone-950",
+  },
+  {
+    valor: "Iniciando telar / Cambio de artículo",
+    corto: "Inic/Art",
+    grupo: "Producción",
+    color: "bg-yellow-500 border-yellow-800 text-stone-950",
+  },
+  {
+    valor: "Anudado / Paso de pega",
+    corto: "Anudado",
+    grupo: "Producción",
+    color: "bg-purple-600 border-purple-900 text-white",
+  },
+  {
+    valor: "Para muestra",
+    corto: "Muestra",
+    grupo: "Producción",
+    color: "bg-fuchsia-600 border-fuchsia-900 text-white",
+  },
+  // Fallas Mecánicas / Operativas
+  {
+    valor: "Falla de trama (o trama floja / recogida)",
+    corto: "Trama",
+    grupo: "Fallas",
+    color: "bg-rose-600 border-rose-900 text-white",
+  },
+  {
+    valor: "Problemas de urdido / tensión",
+    corto: "Urdido",
+    grupo: "Fallas",
+    color: "bg-red-600 border-red-900 text-white",
+  },
+  {
+    valor: "Falla neumática (toberas tapadas, ajuste de presión de aire)",
+    corto: "Neumát.",
+    grupo: "Fallas",
+    color: "bg-sky-600 border-sky-900 text-white",
+  },
+  {
+    valor: "Bloqueo electrónico (Encoder, Motor ETD/EWC)",
+    corto: "Electr.",
+    grupo: "Fallas",
+    color: "bg-indigo-600 border-indigo-900 text-white",
+  },
+  {
+    valor: "Falla de orillo / templero",
+    corto: "Orillo",
+    grupo: "Fallas",
+    color: "bg-pink-600 border-pink-900 text-white",
+  },
+  {
+    valor: "Otro",
+    corto: "Otro",
+    grupo: "Fallas",
+    color: "bg-stone-700 border-stone-950 text-white",
+  },
 ] as const;
 
 function infoMotivoEntrega(motivo: string) {
@@ -91,6 +160,7 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
   // Estados para "Entregar Turno"
   const [modoEntrega, setModoEntrega] = useState<boolean>(false);
   const [motivoActivo, setMotivoActivo] = useState<string>("Para muestra");
+  const [motivoOtroEntrega, setMotivoOtroEntrega] = useState<string>("");
   const [novedadesTurno, setNovedadesTurno] = useState<Record<number, string>>({});
   const [enviandoEntrega, setEnviandoEntrega] = useState<boolean>(false);
 
@@ -202,20 +272,13 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
     if (ot) setOts((prev) => prev.map((o) => (o.id === ot.id ? ot : o)));
   }
 
-  async function generar(datos: {
-    motivo: Motivo;
-    observacion: string;
-    personalAsignado: string;
-  }) {
+  async function generar(datos: { motivo: Motivo; observacion: string }) {
     if (telarAbierto === null) return;
-    const personalFinal = datos.personalAsignado || nombre;
     const payload = {
       telar: telarAbierto,
       motivo: datos.motivo,
       observacion: datos.observacion,
-      mecanico: personalFinal,
-      personalAsignado: personalFinal,
-      trabajo_realizado_por: personalFinal,
+      mecanico: nombre,
       usuario,
     };
     const nueva = await crearOT(payload);
@@ -296,12 +359,16 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
   // Interacción en el mapa: Pintar si está en modoEntrega, o abrir OT normal
   function manejarClickTelar(n: number) {
     if (modoEntrega) {
+      const motivoAsignar =
+        motivoActivo === "Otro"
+          ? motivoOtroEntrega.trim() || "Otro"
+          : motivoActivo;
       setNovedadesTurno((prev) => {
         const copia = { ...prev };
         if (copia[n] !== undefined) {
           delete copia[n];
         } else {
-          copia[n] = motivoActivo;
+          copia[n] = motivoAsignar;
         }
         return copia;
       });
@@ -314,12 +381,14 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
     setModoEntrega(false);
     setNovedadesTurno({});
     setMotivoActivo("Para muestra");
+    setMotivoOtroEntrega("");
   }
 
   async function confirmarEntregaTurno() {
+    const textoOtro = motivoOtroEntrega.trim();
     const listaNovedades = Object.entries(novedadesTurno).map(([telar, motivo]) => ({
       telar: Number(telar),
-      motivo,
+      motivo: motivo === "Otro" && textoOtro ? textoOtro : motivo,
     }));
 
     if (listaNovedades.length === 0) {
@@ -699,25 +768,69 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
               </button>
             </div>
 
-            {/* Botones de selección de motivoActivo */}
-            <div className="flex flex-wrap gap-1.5 sm:gap-2">
-              {MOTIVOS_ENTREGA.map((m) => {
-                const activo = motivoActivo === m.valor;
-                return (
-                  <button
-                    key={m.valor}
-                    type="button"
-                    onClick={() => setMotivoActivo(m.valor)}
-                    className={`rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 sm:text-sm ${
-                      activo
-                        ? "bg-stone-900 text-white ring-2 ring-stone-900 ring-offset-1 shadow-sm"
-                        : "bg-stone-100 text-stone-700 hover:bg-stone-200"
-                    }`}
-                  >
-                    {m.valor}
-                  </button>
-                );
-              })}
+            {/* Botones de selección de motivoActivo agrupados */}
+            <div className="max-h-52 space-y-2.5 overflow-y-auto pr-1">
+              <div>
+                <p className="mb-1 text-[11px] font-bold tracking-wide text-orange-700 uppercase">
+                  Producción
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {MOTIVOS_ENTREGA.filter((m) => m.grupo === "Producción").map((m) => {
+                    const activo = motivoActivo === m.valor;
+                    return (
+                      <button
+                        key={m.valor}
+                        type="button"
+                        onClick={() => setMotivoActivo(m.valor)}
+                        className={`rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 sm:text-sm ${
+                          activo
+                            ? "bg-stone-900 text-white ring-2 ring-stone-900 ring-offset-1 shadow-sm"
+                            : "bg-orange-50 text-orange-950 border border-orange-200 hover:bg-orange-100"
+                        }`}
+                      >
+                        {m.valor}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1 text-[11px] font-bold tracking-wide text-red-700 uppercase">
+                  Fallas Mecánicas / Operativas
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {MOTIVOS_ENTREGA.filter((m) => m.grupo === "Fallas").map((m) => {
+                    const activo = motivoActivo === m.valor;
+                    return (
+                      <button
+                        key={m.valor}
+                        type="button"
+                        onClick={() => setMotivoActivo(m.valor)}
+                        className={`rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 sm:text-sm ${
+                          activo
+                            ? "bg-stone-900 text-white ring-2 ring-stone-900 ring-offset-1 shadow-sm"
+                            : "bg-red-50 text-red-950 border border-red-200 hover:bg-red-100"
+                        }`}
+                      >
+                        {m.valor}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {motivoActivo === "Otro" && (
+                <div className="pt-1">
+                  <input
+                    type="text"
+                    value={motivoOtroEntrega}
+                    onChange={(e) => setMotivoOtroEntrega(e.target.value)}
+                    placeholder="Escribe el motivo para los telares seleccionados con 'Otro'..."
+                    className="w-full rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2.5 text-sm font-medium text-stone-900 placeholder:text-stone-400 outline-none transition focus:border-stone-900 focus:bg-white focus:ring-2 focus:ring-stone-900/20"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Botón grande de envío final */}

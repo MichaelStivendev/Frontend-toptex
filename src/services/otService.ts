@@ -21,17 +21,13 @@ export async function crearOT(datos: {
   observacion: string;
   mecanico: string;
   usuario: Usuario;
-  personalAsignado?: string;
 }): Promise<OT> {
   const response = await fetch(`${API_URL}/api/ots`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      ...datos,
-      trabajo_realizado_por: datos.personalAsignado || datos.mecanico,
-    }),
+    body: JSON.stringify(datos),
   });
 
   if (!response.ok) {

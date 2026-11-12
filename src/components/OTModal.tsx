@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import SelectorOperarios from "./SelectorOperarios";
 import { CATEGORIAS, MOTIVOS, motivosDe } from "../types";
 import type { Categoria, Motivo } from "../types";
 
@@ -7,18 +6,14 @@ type Props = {
   telar: number;
   mecanico: string;
   onCerrar: () => void;
-  onGenerar: (datos: {
-    motivo: Motivo;
-    observacion: string;
-    personalAsignado: string;
-  }) => void;
+  onGenerar: (datos: { motivo: Motivo; observacion: string }) => void;
 };
 
 export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props) {
   const [categoria, setCategoria] = useState<Categoria>("produccion");
   const [motivo, setMotivo] = useState<Motivo | null>(null);
+  const [motivoOtroTexto, setMotivoOtroTexto] = useState("");
   const [observacion, setObservacion] = useState("");
-  const [personalAsignado, setPersonalAsignado] = useState(mecanico);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCerrar();
@@ -27,6 +22,11 @@ export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props)
   }, [onCerrar]);
 
   const cat = CATEGORIAS[categoria];
+  const esOtro = motivo === "Otro" || motivo === "otra_falla";
+  const motivosCategoria: Motivo[] =
+    categoria === "apagado"
+      ? motivosDe(categoria)
+      : [...motivosDe(categoria).filter((m) => m !== "Otro"), "Otro"];
 
   return (
     <div
@@ -60,10 +60,12 @@ export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props)
           onSubmit={(e) => {
             e.preventDefault();
             if (motivo) {
+              const motivoFinal: Motivo = esOtro
+                ? motivoOtroTexto.trim() || "Otro"
+                : motivo;
               onGenerar({
-                motivo,
+                motivo: motivoFinal,
                 observacion: observacion.trim(),
-                personalAsignado: personalAsignado.trim(),
               });
             }
           }}
@@ -84,6 +86,7 @@ export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props)
                   onClick={() => {
                     setCategoria(c);
                     setMotivo(null);
+                    setMotivoOtroTexto("");
                   }}
                   className={`rounded-xl border px-2 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-900/20 ${
                     categoria === c
@@ -104,7 +107,7 @@ export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props)
               Motivo
             </legend>
             <div className="space-y-2">
-              {motivosDe(categoria).map((m) => (
+              {motivosCategoria.map((m) => (
                 <label key={m} className="block cursor-pointer">
                   <input
                     type="radio"
@@ -116,20 +119,32 @@ export default function OTModal({ telar, mecanico, onCerrar, onGenerar }: Props)
                   <div
                     className={`rounded-xl border border-stone-200 px-4 py-3 font-semibold text-stone-900 transition hover:border-stone-400 peer-focus-visible:ring-4 peer-focus-visible:ring-stone-900/20 ${cat.seleccion}`}
                   >
-                    {MOTIVOS[m].nombre}
+                    {MOTIVOS[m]?.nombre ?? m}
                   </div>
                 </label>
               ))}
             </div>
-          </fieldset>
 
-          {/* Selección múltiple de operarios */}
-          <SelectorOperarios
-            value={personalAsignado}
-            onChange={setPersonalAsignado}
-            operarioSesion={mecanico}
-            label="Trabajo realizado por"
-          />
+            {esOtro && (
+              <div className="mt-3">
+                <label
+                  htmlFor="motivo-otro-ot"
+                  className="mb-1.5 block text-xs font-semibold text-stone-700"
+                >
+                  Especifica el motivo:
+                </label>
+                <input
+                  id="motivo-otro-ot"
+                  type="text"
+                  autoFocus
+                  value={motivoOtroTexto}
+                  onChange={(e) => setMotivoOtroTexto(e.target.value)}
+                  placeholder="Escribe el motivo..."
+                  className="w-full rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-medium text-stone-900 placeholder:text-stone-400 outline-none transition focus:border-stone-900 focus:bg-white focus:ring-4 focus:ring-stone-900/10"
+                />
+              </div>
+            )}
+          </fieldset>
 
           <div>
             <label

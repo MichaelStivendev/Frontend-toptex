@@ -19,6 +19,16 @@ export type UsuarioSesion = {
 export type Usuario = string;
 
 export type Motivo =
+  | "Sin urdido"
+  | "Picando peine"
+  | "Repasando"
+  | "Iniciando telar / Cambio de artículo"
+  | "Anudado / Paso de pega"
+  | "Falla de trama (o trama floja / recogida)"
+  | "Problemas de urdido / tensión"
+  | "Falla neumática (toberas tapadas, ajuste de presión de aire)"
+  | "Bloqueo electrónico (Encoder, Motor ETD/EWC)"
+  | "Falla de orillo / templero"
   | "urdimbre"
   | "trama"
   | "cambio_referencia"
@@ -33,7 +43,8 @@ export type Motivo =
   | "Fallo eléctrico"
   | "Fallo de trama"
   | "Falto de urdido"
-  | "Otro";
+  | "Otro"
+  | (string & {});
 
 export type MotivoPausa = "cambio_turno" | "otra_maquina" | "falta_repuesto";
 
@@ -52,7 +63,7 @@ export const CATEGORIAS: Record<
 > = {
   produccion: {
     nombre: "Producción",
-    descripcion: "Paros del proceso",
+    descripcion: "Producción / Alistamiento",
     cuadro: "border-orange-500 bg-orange-400 text-stone-900 hover:bg-orange-500",
     punto: "bg-orange-400",
     pestana: "border-orange-500 bg-orange-50 text-orange-800",
@@ -62,7 +73,7 @@ export const CATEGORIAS: Record<
   },
   falla: {
     nombre: "Falla",
-    descripcion: "Mantenimiento / reparación",
+    descripcion: "Fallas Mecánicas / Operativas",
     cuadro: "border-red-700 bg-red-600 text-white hover:bg-red-700",
     punto: "bg-red-600",
     pestana: "border-red-600 bg-red-50 text-red-800",
@@ -86,6 +97,61 @@ export const MOTIVOS: Record<
   string,
   { nombre: string; corto: string; categoria: Categoria }
 > = {
+  // Producción / Alistamiento
+  "Sin urdido": {
+    nombre: "Sin urdido",
+    corto: "S. Urd.",
+    categoria: "produccion",
+  },
+  "Picando peine": {
+    nombre: "Picando peine",
+    corto: "P. Peine",
+    categoria: "produccion",
+  },
+  Repasando: {
+    nombre: "Repasando",
+    corto: "Rep.",
+    categoria: "produccion",
+  },
+  "Iniciando telar / Cambio de artículo": {
+    nombre: "Iniciando telar / Cambio de artículo",
+    corto: "Inic/Art",
+    categoria: "produccion",
+  },
+  "Anudado / Paso de pega": {
+    nombre: "Anudado / Paso de pega",
+    corto: "Anudado",
+    categoria: "produccion",
+  },
+
+  // Fallas Mecánicas / Operativas
+  "Falla de trama (o trama floja / recogida)": {
+    nombre: "Falla de trama (o trama floja / recogida)",
+    corto: "Trama",
+    categoria: "falla",
+  },
+  "Problemas de urdido / tensión": {
+    nombre: "Problemas de urdido / tensión",
+    corto: "Urdido",
+    categoria: "falla",
+  },
+  "Falla neumática (toberas tapadas, ajuste de presión de aire)": {
+    nombre: "Falla neumática (toberas tapadas, ajuste de presión de aire)",
+    corto: "Neumát.",
+    categoria: "falla",
+  },
+  "Bloqueo electrónico (Encoder, Motor ETD/EWC)": {
+    nombre: "Bloqueo electrónico (Encoder, Motor ETD/EWC)",
+    corto: "Electr.",
+    categoria: "falla",
+  },
+  "Falla de orillo / templero": {
+    nombre: "Falla de orillo / templero",
+    corto: "Orillo",
+    categoria: "falla",
+  },
+
+  // Motivos previos / compatibilidad histórica
   urdimbre: { nombre: "Urdimbre", corto: "Urd.", categoria: "produccion" },
   trama: { nombre: "Trama", corto: "Tra.", categoria: "produccion" },
   cambio_referencia: {
@@ -101,7 +167,7 @@ export const MOTIVOS: Record<
   },
   electrico: { nombre: "Daño eléctrico", corto: "Elec.", categoria: "falla" },
   mecanico: { nombre: "Daño mecánico", corto: "Mec.", categoria: "falla" },
-  otra_falla: { nombre: "Otra falla", corto: "Falla", categoria: "falla" },
+  otra_falla: { nombre: "Otro", corto: "Otro", categoria: "falla" },
   apagado: { nombre: "Apagado", corto: "Off", categoria: "apagado" },
   fuera_servicio: {
     nombre: "Fuera de servicio",
@@ -117,14 +183,22 @@ export const MOTIVOS: Record<
 };
 
 const MOTIVOS_MODAL_BASE: Motivo[] = [
-  "urdimbre",
-  "trama",
-  "cambio_referencia",
-  "repasando",
+  // Producción / Alistamiento (produccion)
+  "Sin urdido",
+  "Picando peine",
+  "Repasando",
+  "Iniciando telar / Cambio de artículo",
+  "Anudado / Paso de pega",
+  "Para muestra",
   "falta_programacion",
-  "electrico",
-  "mecanico",
-  "otra_falla",
+  // Fallas Mecánicas / Operativas (falla)
+  "Falla de trama (o trama floja / recogida)",
+  "Problemas de urdido / tensión",
+  "Falla neumática (toberas tapadas, ajuste de presión de aire)",
+  "Bloqueo electrónico (Encoder, Motor ETD/EWC)",
+  "Falla de orillo / templero",
+  "Otro",
+  // Apagado
   "apagado",
   "fuera_servicio",
 ];
