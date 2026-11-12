@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAutoUpdate } from "./hooks/useAutoUpdate";
 import Login from "./pages/Login";
 import Telares from "./pages/Telares";
 import type { Usuario } from "./types";
@@ -9,6 +10,8 @@ type SesionActiva = {
 };
 
 export default function App() {
+  useAutoUpdate();
+
   const [sesion, setSesion] = useState<SesionActiva | null>(null);
 
   // Recuperar sesión persistente al abrir o recargar el navegador
