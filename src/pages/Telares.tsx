@@ -1,5 +1,5 @@
 // src/pages/Telares.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import OTModal from "../components/OTModal";
 import OTDetalle from "../components/OTDetalle";
 import Historial from "../components/historial";
@@ -57,6 +57,28 @@ const colorUsuario: Record<Usuario, string> = {
 
 const cuadroOperativo =
   "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700";
+
+const cuadroOTAbierta =
+  "border-red-700 bg-red-600 text-white hover:bg-red-700";
+
+const cuadroOTPausada =
+  "border-orange-500 bg-orange-400 text-stone-900 hover:bg-orange-500";
+
+const cuadroNovedadSinOT =
+  "border-red-950 bg-red-800 text-white hover:bg-red-900";
+
+type NovedadMaquina = {
+  telar?: number | string;
+  numero_telar?: number | string;
+  id_telar?: number | string;
+  maquina?: number | string;
+  id?: number | string;
+  novedad?: string;
+  novedad_telar?: string;
+  motivo?: string;
+  descripcion?: string;
+  texto?: string;
+};
 
 const MOTIVOS_ENTREGA = [
   // Producción
@@ -150,11 +172,31 @@ type FiltroAreaAdmin = "todas" | "mythos" | "leonardo";
 export default function Telares({ nombre, usuario, onSalir }: Props) {
   const esAdmin = usuario === "todas" || usuario === "admin";
 
+  // Obtenemos el nombre completo real del mecánico desde la sesión actual (evitando enviar el área o username corto)
+  const nombreRealMecanico = useMemo(() => {
+    try {
+      const usuarioActual = JSON.parse(
+        localStorage.getItem("toptex_sesion") || "{}"
+      );
+      return (
+        usuarioActual?.nombre_completo ||
+        usuarioActual?.nombreCompleto ||
+        usuarioActual?.nombre ||
+        nombre
+      );
+    } catch {
+      return nombre;
+    }
+  }, [nombre]);
+
   const [ots, setOts] = useState<OT[]>([]);
+  const [otsActivadas, setOtsActivadas] = useState<OT[]>([]);
+  const [novedades, setNovedades] = useState<NovedadMaquina[]>([]);
   const [vista, setVista] = useState<"telares" | "historial">("telares");
   const [filtroAreaAdmin, setFiltroAreaAdmin] = useState<FiltroAreaAdmin>("todas");
   const [plano10ColMovil, setPlano10ColMovil] = useState(false);
   const [telarAbierto, setTelarAbierto] = useState<number | null>(null);
+  const [creandoOTDesdeNovedad, setCreandoOTDesdeNovedad] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
   // Estados para "Entregar Turno"
@@ -230,38 +272,142 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
     return `${base}/ws?${params.toString()}`;
   }, [usuario, nombre]);
 
-  const { status: wsStatus, data: wsData, send: wsSend } = useWebSocket(wsUrl);
+  const sincronizarOTs = useCallback((lista: OT[]) => {
+    const segura = Array.isArray(lista) ? lista : [];
+    setOts(segura);
+    setOtsActivadas(
+      segura.filter((o) => o && o.estado !== "finalizada" && typeof o.telar === "number")
+    );
+  }, []);
 
-  // Carga inicial y resincronización automática al conectar o reconectar
-  useEffect(() => {
-    if (wsStatus === "connected") {
-      listarOTs().then(setOts);
+  const cargarNovedadesIniciales = useCallback(async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const res = await fetch(`${apiUrl}/api/novedades`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setNovedades(data as NovedadMaquina[]);
+      }
+    } catch (err) {
+      console.error("Error cargando novedades iniciales:", err);
     }
-  }, [wsStatus]);
+  }, []);
 
-  // Refrescar lista de OTs cada vez que llega un evento por WebSocket
-  useEffect(() => {
-    if (wsData !== null) {
-      console.log("📥 Evento recibido por WebSocket:", wsData);
-      listarOTs().then(setOts);
-    }
-  }, [wsData]);
+  // Procesar cada mensaje recibido por WebSocket sin perder mensajes consecutivos
+  const manejarMensajeWS = useCallback(
+    (rawMsg: unknown) => {
+      if (!rawMsg || typeof rawMsg !== "object") return;
+      console.log("📥 Evento recibido por WebSocket:", rawMsg);
+
+      const msg = rawMsg as Record<string, unknown>;
+      const accion = String(msg.accion ?? msg.action ?? msg.tipo ?? msg.evento ?? "");
+
+      if (accion === "estado_inicial") {
+        const listaActivas = msg.data ?? msg.ots ?? msg.datos ?? [];
+        if (Array.isArray(listaActivas)) {
+          const activasSeguras = (listaActivas as OT[]).filter(
+            (o) => o && o.estado !== "finalizada" && typeof o.telar === "number"
+          );
+          setOtsActivadas(activasSeguras);
+        }
+        listarOTs().then(sincronizarOTs);
+        return;
+      }
+
+      if (accion === "actualizar_novedades") {
+        const listaRecibida =
+          msg.data ?? msg.novedades ?? msg.datos ?? msg.lista ?? [];
+        if (Array.isArray(listaRecibida)) {
+          setNovedades(listaRecibida as NovedadMaquina[]);
+        }
+        return;
+      }
+
+      // Otros eventos de OT (CREAR_OT, ACTUALIZAR_OT, etc.)
+      listarOTs().then(sincronizarOTs);
+    },
+    [sincronizarOTs]
+  );
+
+  const { status: wsStatus, send: wsSend } = useWebSocket(wsUrl, manejarMensajeWS);
 
   // Carga inicial al montar por si el WS tarda en abrir
   useEffect(() => {
-    listarOTs().then(setOts);
-  }, []);
+    listarOTs().then(sincronizarOTs);
+    cargarNovedadesIniciales();
+  }, [sincronizarOTs, cargarNovedadesIniciales]);
 
   const activas = useMemo(() => {
     const mapa = new Map<number, OT>();
-    const listaSegura = Array.isArray(ots) ? ots : [];
+    const listaSegura = Array.isArray(otsActivadas) ? otsActivadas : [];
     listaSegura
       .filter((o) => o && o.estado !== "finalizada" && typeof o.telar === "number")
-      .forEach((o) => mapa.set(o.telar, o));
+      .forEach((o) => mapa.set(Number(o.telar), o));
     return mapa;
-  }, [ots]);
+  }, [otsActivadas]);
+
+  // Mapa de telares detenidos con novedad (sin OT abierta) provenientes de "actualizar_novedades"
+  const novedadesPorTelar = useMemo(() => {
+    const mapa = new Map<number, string>();
+    const listaSegura = Array.isArray(novedades) ? novedades : [];
+    listaSegura.forEach((item) => {
+      if (!item || typeof item !== "object") return;
+      const idBruto =
+        item.telar ??
+        item.numero_telar ??
+        item.id_telar ??
+        item.maquina ??
+        item.id;
+      const numTelar = Number(idBruto);
+      if (!Number.isFinite(numTelar) || numTelar <= 0) return;
+
+      const textoBruto =
+        item.novedad ??
+        item.novedad_telar ??
+        item.motivo ??
+        item.descripcion ??
+        item.texto ??
+        "Parado";
+      mapa.set(numTelar, String(textoBruto).trim() || "Parado");
+    });
+    return mapa;
+  }, [novedades]);
 
   const otActiva = telarAbierto !== null ? activas.get(telarAbierto) : undefined;
+  const novedadTelarAbierto =
+    telarAbierto !== null && !otActiva
+      ? novedadesPorTelar.get(telarAbierto)
+      : undefined;
+
+  function cerrarModalTelar() {
+    setTelarAbierto(null);
+    setCreandoOTDesdeNovedad(false);
+  }
+
+  function liberarTelarAProduccion(telar: number) {
+    wsSend({
+      accion: "liberar_telar",
+      action: "liberar_telar",
+      tipo: "liberar_telar",
+      telar,
+      usuario: nombreRealMecanico,
+    });
+    setNovedades((prev) =>
+      prev.filter((item) => {
+        const idItem = Number(
+          item?.telar ??
+            item?.numero_telar ??
+            item?.id_telar ??
+            item?.maquina ??
+            item?.id
+        );
+        return idItem !== Number(telar);
+      })
+    );
+    cerrarModalTelar();
+    mostrarAviso(`🟢 Telar ${telar} liberado a producción`);
+  }
 
   function mostrarAviso(texto: string) {
     setAviso(texto);
@@ -269,7 +415,15 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
   }
 
   function reemplazar(ot: OT | null) {
-    if (ot) setOts((prev) => prev.map((o) => (o.id === ot.id ? ot : o)));
+    if (!ot) return;
+    setOts((prev) => prev.map((o) => (o.id === ot.id ? ot : o)));
+    setOtsActivadas((prev) => {
+      if (ot.estado === "finalizada") {
+        return prev.filter((o) => o.id !== ot.id);
+      }
+      const existe = prev.some((o) => o.id === ot.id);
+      return existe ? prev.map((o) => (o.id === ot.id ? ot : o)) : [...prev, ot];
+    });
   }
 
   async function generar(datos: { motivo: Motivo; observacion: string }) {
@@ -278,24 +432,46 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
       telar: telarAbierto,
       motivo: datos.motivo,
       observacion: datos.observacion,
-      mecanico: nombre,
-      usuario,
+      mecanico: nombreRealMecanico,
+      usuario: nombreRealMecanico,
     };
     const nueva = await crearOT(payload);
-    wsSend({ tipo: "ot_creada", ...payload, id: nueva.id });
+    wsSend({
+      accion: "crear_ot",
+      action: "crear_ot",
+      tipo: "ot_creada",
+      ...payload,
+      id: nueva.id,
+    });
+    setNovedades((prev) =>
+      prev.filter((item) => {
+        const idItem = Number(
+          item?.telar ??
+            item?.numero_telar ??
+            item?.id_telar ??
+            item?.maquina ??
+            item?.id
+        );
+        return idItem !== Number(nueva.telar);
+      })
+    );
     setOts((prev) => [...prev, nueva]);
-    setTelarAbierto(null);
+    setOtsActivadas((prev) => [
+      ...prev.filter((o) => Number(o.telar) !== Number(nueva.telar)),
+      nueva,
+    ]);
+    cerrarModalTelar();
     mostrarAviso(`${nueva.id} generada para el telar ${nueva.telar}`);
   }
 
   async function pausar(ot: OT, motivo: MotivoPausa) {
-    reemplazar(await pausarOT(ot.id, motivo, nombre));
+    reemplazar(await pausarOT(ot.id, motivo, nombreRealMecanico));
     setTelarAbierto(null);
     mostrarAviso(`${ot.id} en pausa`);
   }
 
   async function reanudar(ot: OT) {
-    const res = await reanudarOT(ot.id, nombre);
+    const res = await reanudarOT(ot.id, nombreRealMecanico);
     if (!res) {
       window.alert("No se pudo reanudar la OT en el servidor.");
       return;
@@ -303,57 +479,100 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
 
     // Actualizamos el estado local inmediatamente a "abierta" para que la vista normal de la OT se muestre sin cerrar el modal
     const ahoraIso = new Date().toISOString();
-    setOts((prev) =>
-      prev.map((o) => {
-        if (o.id !== ot.id) return o;
-        if (res && typeof res === "object" && "id" in res && "estado" in res) {
-          return res;
-        }
-        const pausasActualizadas = Array.isArray(o.pausas)
-          ? o.pausas.map((p, idx, arr) =>
-              idx === arr.length - 1 && !p.hasta
-                ? { ...p, hasta: ahoraIso, reanudadaPor: nombre }
-                : p
-            )
-          : [];
-        return {
-          ...o,
-          estado: "abierta",
-          pausas: pausasActualizadas,
-        };
-      })
-    );
+    const mapearReanudada = (o: OT): OT => {
+      if (o.id !== ot.id) return o;
+      if (res && typeof res === "object" && "id" in res && "estado" in res) {
+        return res;
+      }
+      const pausasActualizadas = Array.isArray(o.pausas)
+        ? o.pausas.map((p, idx, arr) =>
+            idx === arr.length - 1 && !p.hasta
+              ? { ...p, hasta: ahoraIso, reanudadaPor: nombreRealMecanico }
+              : p
+          )
+        : [];
+      return {
+        ...o,
+        estado: "abierta",
+        pausas: pausasActualizadas,
+      };
+    };
 
-    listarOTs().then(setOts);
-    mostrarAviso(`✅ Revisión de ${ot.id} reanudada por ${nombre}`);
+    setOts((prev) => prev.map(mapearReanudada));
+    setOtsActivadas((prev) => prev.map(mapearReanudada));
+
+    listarOTs().then(sincronizarOTs);
+    mostrarAviso(`✅ Revisión de ${ot.id} reanudada por ${nombreRealMecanico}`);
   }
 
   async function finalizar(
     ot: OT,
     datos: {
-      trabajoRealizado: string;
+      trabajo_realizado: string;
       personalAsignado: string;
+      usuario?: string;
       repuestos: Repuesto[];
+      estado_telar: "operativo" | "parado";
+      novedad_telar: string;
     }
   ) {
-    const personalFinal = datos.personalAsignado || nombre;
+    const usuarioReal = datos.usuario || nombreRealMecanico;
+    const personalFinal = datos.personalAsignado || usuarioReal;
+    const estadoTelar = datos.estado_telar;
+    const novedadTelar =
+      estadoTelar === "operativo" ? "" : datos.novedad_telar.trim();
+    const trabajoRealizado = datos.trabajo_realizado.trim();
+
     const actualizada = await finalizarOT(ot.id, {
       ...datos,
-      por: nombre,
+      trabajo_realizado: trabajoRealizado,
+      por: usuarioReal,
+      usuario: usuarioReal,
       personalAsignado: personalFinal,
+      estado_telar: estadoTelar,
+      novedad_telar: novedadTelar,
     });
     wsSend({
+      accion: "FINALIZAR_OT",
       tipo: "ot_finalizada",
       id: ot.id,
       telar: ot.telar,
-      trabajoRealizado: datos.trabajoRealizado,
+      trabajo_realizado: trabajoRealizado,
+      usuario: usuarioReal,
+      por: usuarioReal,
+      finalizada_por: usuarioReal,
       personalAsignado: personalFinal,
       trabajo_realizado_por: personalFinal,
       repuestos: datos.repuestos,
+      estado_telar: estadoTelar,
+      novedad_telar: novedadTelar,
+    });
+    setNovedades((prev) => {
+      const sinEsteTelar = prev.filter((item) => {
+        const idItem = Number(
+          item.telar ?? item.numero_telar ?? item.id_telar ?? item.maquina ?? item.id
+        );
+        return idItem !== ot.telar;
+      });
+      if (estadoTelar === "parado") {
+        return [
+          ...sinEsteTelar,
+          {
+            telar: ot.telar,
+            novedad: novedadTelar || "Parado",
+            usuario: usuarioReal,
+          },
+        ];
+      }
+      return sinEsteTelar;
     });
     reemplazar(actualizada);
     setTelarAbierto(null);
-    mostrarAviso(`Telar ${ot.telar} operativo de nuevo`);
+    mostrarAviso(
+      estadoTelar === "operativo"
+        ? `Telar ${ot.telar} operativo de nuevo`
+        : `OT de telar ${ot.telar} finalizada (queda parado)`
+    );
   }
 
   // Interacción en el mapa: Pintar si está en modoEntrega, o abrir OT normal
@@ -374,6 +593,7 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
       });
       return;
     }
+    setCreandoOTDesdeNovedad(false);
     setTelarAbierto(n);
   }
 
@@ -398,16 +618,8 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
 
     setEnviandoEntrega(true);
     try {
-      // Extraemos el nombre del usuario directamente de la sesión actual (sin inputs adicionales)
-      let usuarioSesionNombre = nombre;
-      if (!usuarioSesionNombre) {
-        try {
-          const sesionGuardada = JSON.parse(localStorage.getItem("toptex_sesion") || "{}");
-          usuarioSesionNombre = sesionGuardada?.nombre || usuario;
-        } catch {
-          usuarioSesionNombre = usuario;
-        }
-      }
+      // Extraemos el nombre completo real del usuario desde la sesión actual
+      const usuarioSesionNombre = nombreRealMecanico;
 
       const apiUrl = import.meta.env.VITE_API_URL;
       const response = await fetch(`${apiUrl}/api/turnos/entregar`, {
@@ -417,6 +629,8 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
         },
         body: JSON.stringify({
           reportado_por: usuarioSesionNombre,
+          usuario: usuarioSesionNombre,
+          mecanico: usuarioSesionNombre,
           novedades: listaNovedades,
         }),
       });
@@ -428,7 +642,7 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
       window.alert(`¡Entrega de turno exitosa! Se reportaron ${listaNovedades.length} telar(es).`);
       mostrarAviso(`Turno entregado (${listaNovedades.length} telares reportados)`);
       cancelarModoEntrega();
-      listarOTs().then(setOts);
+      listarOTs().then(sincronizarOTs);
     } catch (error) {
       console.error("Error al entregar turno:", error);
       window.alert("Ocurrió un error al enviar la entrega de turno. Intenta nuevamente.");
@@ -438,16 +652,19 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
   }
 
   const conteo: Record<Categoria, number> = { produccion: 0, falla: 0, apagado: 0 };
+  let paradosSinOT = 0;
   numeros.forEach((n) => {
     const ot = activas.get(n);
     if (ot) {
       const cat = obtenerInfoMotivo(ot.motivo).categoria;
       conteo[cat] = (conteo[cat] ?? 0) + 1;
+    } else if (novedadesPorTelar.has(n)) {
+      paradosSinOT += 1;
     }
   });
   const operativos = Math.max(
     0,
-    numeros.length - Object.values(conteo).reduce((a, b) => a + b, 0)
+    numeros.length - Object.values(conteo).reduce((a, b) => a + b, 0) - paradosSinOT
   );
 
   const leyenda = [
@@ -457,6 +674,9 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
       punto: CATEGORIAS[c].punto,
       n: conteo[c],
     })),
+    ...(paradosSinOT > 0
+      ? [{ nombre: "Parado (Novedad)", punto: "bg-red-800", n: paradosSinOT }]
+      : []),
   ];
 
   // Mobile-first: 5 columnas táctiles por defecto en móvil (o 10 columnas si activa vista plano)
@@ -666,8 +886,43 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
                           );
                         }
 
-                        const ot = activas.get(n);
+                        // Paso A: Busca si el telar tiene una OT en otsActivadas.
+                        // Si sí, píntalo según la OT (Rojo normal si abierta, Naranja si pausada).
+                        const ot = otsActivadas.find(
+                          (o) =>
+                            o &&
+                            o.estado !== "finalizada" &&
+                            Number(o.telar) === Number(n)
+                        );
                         const infoOt = ot ? obtenerInfoMotivo(ot.motivo) : null;
+                        const pausada = ot?.estado === "pausada";
+
+                        // Paso B: Si NO tiene OT activa, busca si el ID del telar existe en el array novedades.
+                        // Si existe, píntalo de Rojo Oscuro (bg-red-800) y muestra el texto de la novedad.
+                        const novedadEncontrada = !ot
+                          ? novedades.find((item) => {
+                              const idItem =
+                                item?.telar ??
+                                item?.numero_telar ??
+                                item?.id_telar ??
+                                item?.maquina ??
+                                item?.id;
+                              return Number(idItem) === Number(n);
+                            })
+                          : undefined;
+
+                        const textoNovedad = novedadEncontrada
+                          ? String(
+                              novedadEncontrada.novedad ??
+                                novedadEncontrada.novedad_telar ??
+                                novedadEncontrada.motivo ??
+                                novedadEncontrada.descripcion ??
+                                novedadEncontrada.texto ??
+                                "Parado"
+                            ).trim() || "Parado"
+                          : undefined;
+                        const tieneNovedadSinOT = !ot && Boolean(novedadEncontrada);
+
                         const motivoEntregaAsignado =
                           typeof novedadesTurno[n] === "string" ? novedadesTurno[n] : undefined;
                         const seleccionadoEnEntrega = motivoEntregaAsignado !== undefined;
@@ -675,20 +930,26 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
                           ? infoMotivoEntrega(motivoEntregaAsignado)
                           : null;
 
+                        // Paso C: Si no está en OTs ni en Novedades, píntalo de Verde (Operativo).
                         let clases = cuadroOperativo;
                         if (seleccionadoEnEntrega && infoEntrega) {
                           clases = infoEntrega.color;
-                        } else if (infoOt) {
-                          clases = CATEGORIAS[infoOt.categoria]?.cuadro ?? cuadroOperativo;
+                        } else if (ot) {
+                          clases = pausada ? cuadroOTPausada : cuadroOTAbierta;
+                        } else if (tieneNovedadSinOT) {
+                          clases = cuadroNovedadSinOT;
                         }
-
-                        const pausada = ot?.estado === "pausada";
 
                         return (
                           <button
                             key={n}
                             onClick={() => manejarClickTelar(n)}
                             aria-label={`Telar ${n}`}
+                            title={
+                              tieneNovedadSinOT
+                                ? `Telar ${n} parado: ${textoNovedad}`
+                                : undefined
+                            }
                             className={`relative flex aspect-square flex-col items-center justify-center rounded-lg border font-semibold transition active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-900/30 sm:rounded-xl ${
                               plano10ColMovil
                                 ? "text-[10px] sm:text-sm"
@@ -713,20 +974,27 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
                               >
                                 {infoEntrega.corto}
                               </span>
-                            ) : (
-                              ot &&
-                              infoOt && (
-                                <span
-                                  className={`mt-0.5 font-medium leading-none opacity-90 truncate max-w-full px-0.5 ${
-                                    plano10ColMovil
-                                      ? "text-[7px] sm:text-[10px]"
-                                      : "text-[9px] sm:text-[10px]"
-                                  }`}
-                                >
-                                  {pausada ? "Pausa" : infoOt.corto}
-                                </span>
-                              )
-                            )}
+                            ) : ot && infoOt ? (
+                              <span
+                                className={`mt-0.5 font-medium leading-none opacity-90 truncate max-w-full px-0.5 ${
+                                  plano10ColMovil
+                                    ? "text-[7px] sm:text-[10px]"
+                                    : "text-[9px] sm:text-[10px]"
+                                }`}
+                              >
+                                {pausada ? "Pausa" : infoOt.corto}
+                              </span>
+                            ) : tieneNovedadSinOT ? (
+                              <span
+                                className={`mt-0.5 font-medium leading-tight opacity-95 truncate max-w-full px-0.5 ${
+                                  plano10ColMovil
+                                    ? "text-[7px] sm:text-[9px]"
+                                    : "text-[8px] sm:text-[10px]"
+                                }`}
+                              >
+                                {textoNovedad}
+                              </span>
+                            ) : null}
                           </button>
                         );
                       })
@@ -848,20 +1116,88 @@ export default function Telares({ nombre, usuario, onSalir }: Props) {
         </div>
       )}
 
-      {telarAbierto !== null && !otActiva && (
-        <OTModal
-          telar={telarAbierto}
-          mecanico={nombre}
-          onCerrar={() => setTelarAbierto(null)}
-          onGenerar={generar}
-        />
-      )}
+      {telarAbierto !== null &&
+        !otActiva &&
+        novedadTelarAbierto !== undefined &&
+        !creandoOTDesdeNovedad && (
+          <div
+            className="fixed inset-0 z-20 flex items-end justify-center bg-stone-900/50 sm:items-center sm:p-4"
+            onClick={cerrarModalTelar}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="novedad-telar-titulo"
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl"
+            >
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-red-800 px-3 py-1 text-xs font-bold text-white">
+                    🔴 Telar Parado (Novedad)
+                  </span>
+                  <h2
+                    id="novedad-telar-titulo"
+                    className="mt-2 text-xl font-bold text-stone-900"
+                  >
+                    Telar {telarAbierto}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={cerrarModalTelar}
+                  aria-label="Cerrar"
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 transition hover:bg-stone-100 hover:text-stone-900"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="mb-6 rounded-2xl border border-red-200 bg-red-50/70 p-4">
+                <p className="text-xs font-bold tracking-wider text-red-800 uppercase">
+                  Motivo de novedad / paro
+                </p>
+                <p className="mt-1 text-base font-semibold text-stone-900">
+                  {novedadTelarAbierto}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCreandoOTDesdeNovedad(true)}
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3.5 text-base font-bold text-white shadow-md transition hover:bg-red-700 active:scale-[0.99]"
+                >
+                  🔧 Abrir Nueva OT
+                </button>
+                <button
+                  type="button"
+                  onClick={() => liberarTelarAProduccion(telarAbierto)}
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3.5 text-base font-bold text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.99]"
+                >
+                  🟢 Liberar a Producción
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+      {telarAbierto !== null &&
+        !otActiva &&
+        (novedadTelarAbierto === undefined || creandoOTDesdeNovedad) && (
+          <OTModal
+            telar={telarAbierto}
+            mecanico={nombre}
+            onCerrar={cerrarModalTelar}
+            onGenerar={generar}
+          />
+        )}
 
       {telarAbierto !== null && otActiva && (
         <OTDetalle
           ot={otActiva}
           mecanico={nombre}
-          onCerrar={() => setTelarAbierto(null)}
+          onCerrar={cerrarModalTelar}
           onPausar={(m) => pausar(otActiva, m)}
           onReanudar={() => reanudar(otActiva)}
           onFinalizar={(d) => finalizar(otActiva, d)}

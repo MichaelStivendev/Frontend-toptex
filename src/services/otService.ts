@@ -85,10 +85,13 @@ export async function reanudarOT(id: string, por: string): Promise<OT | null> {
 export async function finalizarOT(
   id: string,
   datos: {
-    trabajoRealizado: string;
+    trabajo_realizado: string;
     personalAsignado: string;
     repuestos: Repuesto[];
     por: string;
+    usuario?: string;
+    estado_telar: "operativo" | "parado";
+    novedad_telar: string;
   }
 ): Promise<OT | null> {
   try {

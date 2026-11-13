@@ -4,6 +4,7 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 export type LoginRespuesta = {
   nombreCompleto: string;
+  nombre_completo: string;
   area: Area;
   rol?: RolNombre;
 };
@@ -21,9 +22,14 @@ export async function loginMecanico(username: string, password: string): Promise
   }
 
   const data = await res.json();
+  const nombreReal =
+    data.usuario?.nombre_completo ||
+    data.usuario?.nombreCompleto ||
+    username;
   // El backend devuelve { usuario: { nombreCompleto, area, ... } }
   return {
-    nombreCompleto: data.usuario.nombreCompleto,
+    nombreCompleto: nombreReal,
+    nombre_completo: nombreReal,
     area: data.usuario.area, // "mythos" o "leonardo"
   };
 }

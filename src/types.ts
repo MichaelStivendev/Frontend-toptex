@@ -266,6 +266,7 @@ export type OT = {
   finalizada?: string;
   finalizadaPor?: string;
   trabajoRealizado?: string;
+  trabajo_realizado?: string;
   repuestos?: Repuesto[];
   personalAsignado?: string;
 };

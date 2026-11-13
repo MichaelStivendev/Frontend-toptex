@@ -6,6 +6,8 @@ import type { Usuario } from "./types";
 
 type SesionActiva = {
   nombre: string;
+  nombre_completo?: string;
+  nombreCompleto?: string;
   usuario: Usuario;
 };
 
@@ -27,7 +29,12 @@ export default function App() {
   }, []);
 
   function handleEntrar(nombre: string, usuario: Usuario) {
-    const nuevaSesion: SesionActiva = { nombre, usuario };
+    const nuevaSesion: SesionActiva = {
+      nombre,
+      nombre_completo: nombre,
+      nombreCompleto: nombre,
+      usuario,
+    };
     setSesion(nuevaSesion);
     localStorage.setItem("toptex_sesion", JSON.stringify(nuevaSesion));
   }

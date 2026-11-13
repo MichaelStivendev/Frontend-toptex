@@ -16,7 +16,8 @@ const BASE_DELAY_MS = 1000; // 1s inicial
 const MAX_DELAY_MS = 10000; // Tope máximo de 10s
 
 export function useWebSocket<T = unknown>(
-  url: string | null
+  url: string | null,
+  onMessage?: (data: T) => void
 ): UseWebSocketReturn<T> {
   const [status, setStatus] = useState<WebSocketStatus>(
     url ? "connecting" : "disconnected"
@@ -27,6 +28,11 @@ export function useWebSocket<T = unknown>(
   const retryCountRef = useRef<number>(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef<boolean>(false);
+  const onMessageRef = useRef<((data: T) => void) | undefined>(onMessage);
+
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   const send = useCallback((payload: unknown): boolean => {
     const socket = wsRef.current;
@@ -91,13 +97,15 @@ export function useWebSocket<T = unknown>(
 
       ws.onmessage = (event: MessageEvent) => {
         if (!isMountedRef.current || wsRef.current !== ws) return;
+        let parsed: T;
         try {
-          const parsed = JSON.parse(event.data) as T;
-          setData(parsed);
+          parsed = JSON.parse(event.data) as T;
         } catch {
           // Si el mensaje no es JSON válido, entregamos el valor directo
-          setData(event.data as unknown as T);
+          parsed = event.data as unknown as T;
         }
+        setData(parsed);
+        onMessageRef.current?.(parsed);
       };
 
       ws.onerror = (error) => {

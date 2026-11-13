@@ -171,13 +171,13 @@ export default function Historial({ ots, desde, hasta }: Props) {
                   )}
 
                   {/* Trabajo Realizado y Personal que intervino */}
-                  {o.trabajoRealizado && (
+                  {(o.trabajo_realizado || o.trabajoRealizado) && (
                     <div className="rounded-xl bg-white p-3 border border-stone-100">
                       <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">
                         Trabajo realizado / Solución
                       </p>
                       <p className="mt-1 font-medium text-stone-900">
-                        {o.trabajoRealizado}
+                        {o.trabajo_realizado || o.trabajoRealizado}
                       </p>
                       
                       {personalRealizador && (

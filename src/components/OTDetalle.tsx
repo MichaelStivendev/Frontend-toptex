@@ -17,11 +17,14 @@ type Props = {
   onCerrar: () => void;
   onPausar: (motivo: MotivoPausa) => void;
   onReanudar: () => Promise<void> | void;
-  // Actualizamos el tipo para incluir el personal
+  // Actualizamos el tipo para incluir el personal, el usuario (nombre_completo) y el estado final del telar con trabajo_realizado
   onFinalizar: (datos: {
-    trabajoRealizado: string;
+    trabajo_realizado: string;
     personalAsignado: string;
+    usuario: string;
     repuestos: Repuesto[];
+    estado_telar: "operativo" | "parado";
+    novedad_telar: string;
   }) => void;
 };
 
@@ -52,6 +55,10 @@ export default function OTDetalle({
   
   // Nuevo estado para el personal que hizo/cerró la OT (inicia con el mecánico de la sesión por defecto)
   const [personalAsignado, setPersonalAsignado] = useState(mecanico);
+
+  // Estado final del telar al cerrar la OT ("operativo" por defecto) y motivo si queda parado
+  const [estadoTelar, setEstadoTelar] = useState<"operativo" | "parado">("operativo");
+  const [novedadTelar, setNovedadTelar] = useState("");
 
   const [repuestos, setRepuestos] = useState<Repuesto[]>([]);
   const [repNombre, setRepNombre] = useState("");
@@ -92,6 +99,34 @@ export default function OTDetalle({
     ]);
     setRepNombre("");
     setRepCantidad("1");
+  }
+
+  function handleFinalizar() {
+    let usuarioActual: {
+      nombre_completo?: string;
+      nombreCompleto?: string;
+      nombre?: string;
+    } = {};
+    try {
+      usuarioActual = JSON.parse(localStorage.getItem("toptex_sesion") || "{}");
+    } catch {
+      usuarioActual = {};
+    }
+
+    const nombreCompletoMecanico =
+      usuarioActual.nombre_completo ||
+      usuarioActual.nombreCompleto ||
+      usuarioActual.nombre ||
+      mecanico;
+
+    onFinalizar({
+      trabajo_realizado: trabajo.trim(),
+      personalAsignado: personalAsignado.trim() || nombreCompletoMecanico,
+      usuario: nombreCompletoMecanico,
+      repuestos,
+      estado_telar: estadoTelar,
+      novedad_telar: estadoTelar === "operativo" ? "" : novedadTelar.trim(),
+    });
   }
 
   return (
@@ -429,6 +464,74 @@ export default function OTDetalle({
                   </ul>
                 )}
               </div>
+
+              {/* ---- Estado final de la máquina ---- */}
+              <fieldset>
+                <legend className="mb-2 block text-sm font-medium text-stone-700">
+                  Estado final del telar
+                </legend>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="cursor-pointer">
+                    <input
+                      type="radio"
+                      name="estadoTelar"
+                      value="operativo"
+                      checked={estadoTelar === "operativo"}
+                      onChange={() => setEstadoTelar("operativo")}
+                      className="peer sr-only"
+                    />
+                    <div
+                      className={`flex min-h-16 items-center justify-center rounded-2xl border-2 px-4 py-4 text-center text-base font-bold transition active:scale-[0.98] ${
+                        estadoTelar === "operativo"
+                          ? "border-emerald-600 bg-emerald-100 text-emerald-950 ring-4 ring-emerald-500/20 shadow-sm"
+                          : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+                      }`}
+                    >
+                      🟢 Operativo
+                    </div>
+                  </label>
+
+                  <label className="cursor-pointer">
+                    <input
+                      type="radio"
+                      name="estadoTelar"
+                      value="parado"
+                      checked={estadoTelar === "parado"}
+                      onChange={() => setEstadoTelar("parado")}
+                      className="peer sr-only"
+                    />
+                    <div
+                      className={`flex min-h-16 items-center justify-center rounded-2xl border-2 px-4 py-4 text-center text-base font-bold transition active:scale-[0.98] ${
+                        estadoTelar === "parado"
+                          ? "border-red-600 bg-red-100 text-red-950 ring-4 ring-red-500/20 shadow-sm"
+                          : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+                      }`}
+                    >
+                      🔴 Parado
+                    </div>
+                  </label>
+                </div>
+
+                {estadoTelar === "parado" && (
+                  <div className="mt-3">
+                    <label
+                      htmlFor="novedad-telar"
+                      className="mb-1.5 block text-sm font-semibold text-red-800"
+                    >
+                      ¿Por qué queda parado? (Ej: Amarrando hilos, falla eléctrica) *
+                    </label>
+                    <textarea
+                      id="novedad-telar"
+                      rows={2}
+                      required
+                      value={novedadTelar}
+                      onChange={(e) => setNovedadTelar(e.target.value)}
+                      placeholder="Ej: Amarrando hilos, falla eléctrica"
+                      className={`${campo} resize-none border-red-300 bg-red-50/40 focus:border-red-600 focus:ring-red-600/15`}
+                    />
+                  </div>
+                )}
+              </fieldset>
             </div>
 
             <div className={barraAcciones}>
@@ -436,14 +539,11 @@ export default function OTDetalle({
                 Volver
               </button>
               <button
-                disabled={!trabajo.trim()}
-                onClick={() =>
-                  onFinalizar({
-                    trabajoRealizado: trabajo.trim(),
-                    personalAsignado: personalAsignado.trim(),
-                    repuestos,
-                  })
+                disabled={
+                  !trabajo.trim() ||
+                  (estadoTelar === "parado" && !novedadTelar.trim())
                 }
+                onClick={handleFinalizar}
                 className={`${btnBase} bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300`}
               >
                 Finalizar OT
